@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>飞机大战</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            height: 100%;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #000;
+        }
+        canvas {
+            background: #000;
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.8);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            width: 300px;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        .modalContent {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        .modalContent button {
+            margin: 10px;
+            padding: 10px 20px;
+            font-size: 16px;
+        }
+        #levelDisplay {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 20px;
+            z-index: 1000;
+            display: none; /* Initially hidden */
+        }
+        #levelButtons {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="levelDisplay">关卡: 1</div>
+    <canvas id="gameCanvas"></canvas>
+    <div id="startModal" class="modal">
+        <div class="modalContent">
+            <p>欢迎来到飞机大战</p>
+            <button id="startButton">开始游戏</button>
+        </div>
+    </div>
+    <div id="levelSelectModal" class="modal">
+        <div class="modalContent">
+            <p>选择关卡</p>
+            <div id="levelButtons"></div>
+        </div>
+    </div>
+    <div id="levelModal" class="modal">
+        <div class="modalContent">
+            <p id="levelMessage"></p>
+            <button id="nextLevelButton">下一关</button>
+            <button id="retryLevelButton">重试本关</button>
+        </div>
+    </div>
+    <div id="gameOverModal" class="modal">
+        <div class="modalContent">
+            <p>游戏失败！</p>
+            <button id="restartButton">重新开始</button>
+            <button id="homeButton">返回首页</button>
+        </div>
+    </div>
+    <div id="pauseModal" class="modal">
+        <div class="modalContent">
+            <p>游戏暂停</p>
+            <button id="resumeButton">继续游戏</button>
+        </div>
+    </div>
+    <div id="completionModal" class="modal">
+        <div class="modalContent">
+            <p>恭喜你完成所有关卡！</p>
+            <button id="completionHomeButton">返回首页</button>
+        </div>
+    </div>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startModal = document.getElementById('startModal');
+        const startButton = document.getElementById('startButton');
+        const levelSelectModal = document.getElementById('levelSelectModal');
+        const levelButtons = document.getElementById('levelButtons');
+        const levelModal = document.getElementById('levelModal');
+        const levelMessage = document.getElementById('levelMessage');
+        const nextLevelButton = document.getElementById('nextLevelButton');
+        const retryLevelButton = document.getElementById('retryLevelButton');
+        const gameOverModal = document.getElementById('gameOverModal');
+        const restartButton = document.getElementById('restartButton');
+        const homeButton = document.getElementById('homeButton');
+        const pauseModal = document.getElementById('pauseModal');
+        const resumeButton = document.getElementById('resumeButton');
+        const levelDisplay = document.getElementById('levelDisplay');
+        const completionModal = document.getElementById('completionModal');
+        const completionHomeButton = document.getElementById('completionHomeButton');
+
+        const totalLevels = 10; 
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas(); 
+
+        let scaleFactor = Math.min(canvas.width / 800, canvas.height / 600);
+
+        class Player {
+            constructor() {
+                this.initialX = canvas.width / 2;
+                this.initialY = canvas.height - 100 * scaleFactor;
+                this.x = this.initialX;
+                this.y = this.initialY;
+                this.width = 40 * scaleFactor;
+                this.height = 40 * scaleFactor;
+                this.xChange = 0;
+                this.yChange = 0;
+                this.bulletSpeed = -5 * scaleFactor;
+                this.bulletCount = 1;
+                this.powerUpDuration = 0;
+            }
+
+            resetPosition() {
+                this.x = this.initialX;
+                this.y = this.initialY;
+            }
+
+            resetAttributes() {
+                this.bulletSpeed = -5 * scaleFactor;
+                this.bulletCount = 1;
+                this.powerUpDuration = 0;
+            }
+
+            move() {
+                this.x += this.xChange;
+                this.y += this.yChange;
+                if (this.x <= 0) this.x = 0;
+                if (this.x >= canvas.width - this.width) this.x = canvas.width - this.width;
+                
+                const topBoundaryLimit = 100 * scaleFactor; 
+                if (this.y <= topBoundaryLimit) this.y = topBoundaryLimit;
+                
+                if (this.y >= canvas.height - this.height) this.y = canvas.height - this.height;
+            }
+
+            draw() {
+                ctx.fillStyle = 'blue';
+                ctx.beginPath();
+                ctx.moveTo(this.x, this.y);
+                ctx.lineTo(this.x + this.width / 2, this.y - this.height);
+                ctx.lineTo(this.x + this.width, this.y);
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            hits(target) {
+                return this.x < target.x + target.width &&
+                       this.x + this.width > target.x &&
+                       this.y < target.y + target.height &&
+                       this.y + this.height > target.y;
+            }
+
+            shoot() {
+                const bullets = [];
+                if (this.bulletCount === 1) {
+                    bullets.push(new Bullet(this.x + this.width / 2 - 2.5 * scaleFactor, this.y - 10 * scaleFactor, this.bulletSpeed, 'yellow'));
+                } else if (this.bulletCount === 3) {
+                    bullets.push(new Bullet(this.x + this.width / 2 - 15 * scaleFactor, this.y - 10 * scaleFactor, this.bulletSpeed, 'yellow'));
+                    bullets.push(new Bullet(this.x + this.width / 2 - 2.5 * scaleFactor, this.y - 10 * scaleFactor, this.bulletSpeed, 'yellow'));
+                    bullets.push(new Bullet(this.x + this.width / 2 + 10 * scaleFactor, this.y - 10 * scaleFactor, this.bulletSpeed, 'yellow'));
+                }
+                return bullets;
+            }
+
+            updatePowerUp() {
+                if (this.powerUpDuration > 0) {
+                    this.powerUpDuration--;
+                    if (this.powerUpDuration === 0) {
+                        this.resetAttributes();
+                    }
+                }
+            }
+        }
+
+        class Enemy {
+            constructor(speed) {
+                this.width = 40 * scaleFactor;
+                this.height = 40 * scaleFactor;
+                this.y = -this.height; 
+                this.yChange = speed * scaleFactor;
+                this.bulletSpeed = (speed + 2) * scaleFactor; 
+                this.setPosition();
+            }
+
+            setPosition() {
+                let overlapping;
+                do {
+                    overlapping = false;
+                    this.x = Math.random() * (canvas.width - this.width);
+                    for (let enemy of enemies) {
+                        if (this !== enemy && this.hits(enemy)) {
+                            overlapping = true;
+                            break;
+                        }
+                    }
+                } while (overlapping);
+            }
+
+            move() {
+                this.y += this.yChange;
+                if (this.y > canvas.height) {
+                    this.y = -this.height; 
+                    this.setPosition(); 
+                }
+            }
+
+            draw() {
+                ctx.fillStyle = 'red';
+                ctx.beginPath();
+                ctx.arc(this.x + this.width / 2, this.y + this.height / 2, this.width / 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            hits(target) {
+                return this.x < target.x + target.width &&
+                       this.x + this.width > target.x &&
+                       this.y < target.y + target.height &&
+                       this.y + this.height > target.y;
+            }
+
+            shoot() {
+                return new Bullet(this.x + this.width / 2 - 2.5 * scaleFactor, this.y + this.height, this.bulletSpeed, 'red');
+            }
+        }
+
+        class Bullet {
+            constructor(x, y, speed, color) {
+                this.x = x;
+                this.y = y;
+                this.speed = speed;
+                this.color = color;
+                this.width = 5 * scaleFactor;
+                this.height = 10 * scaleFactor;
+            }
+
+            move() {
+                this.y += this.speed;
+            }
+
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+            }
+
+            isOffScreen() {
+                return this.y < 0 || this.y > canvas.height;
+            }
+
+            hits(target) {
+                return this.x < target.x + target.width &&
+                       this.x + this.width > target.x &&
+                       this.y < target.y + target.height &&
+                       this.y + this.height > target.y;
+            }
+        }
+
+        class PowerUp {
+            constructor(type) {
+                this.type = type;
+                this.radius = 15 * scaleFactor;
+                this.x = Math.random() * (canvas.width - this.radius * 2);
+                this.y = -this.radius * 2;
+                this.speed = 2 * scaleFactor;
+            }
+
+            move() {
+                this.y += this.speed;
+            }
+
+            draw() {
+                ctx.fillStyle = this.type === 'triple' ? 'green' : 'orange';
+                ctx.beginPath();
+                ctx.arc(this.x + this.radius, this.y + this.radius, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = 'white';
+                ctx.font = `${12 * scaleFactor}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                if (this.type === 'triple') {
+                    ctx.fillText('3x', this.x + this.radius, this.y + this.radius);
+                } else if (this.type === 'speed') {
+                    ctx.fillText('2x', this.x + this.radius, this.y + this.radius);
+                }
+            }
+
+            isOffScreen() {
+                return this.y > canvas.height;
+            }
+
+            hits(target) {
+                const dx = (this.x + this.radius) - (target.x + target.width / 2);
+                const dy = (this.y + this.radius) - (target.y + target.height / 2);
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                return distance < this.radius + target.width / 2;
+            }
+        }
+
+        const player = new Player();
+        let enemies = [];
+        let playerBullets = [];
+        let enemyBullets = [];
+        let powerUps = [];
+        let level = 1;
+        let isPaused = false;
+
+        function startLevel() {
+            player.resetPosition();
+            player.resetAttributes(); 
+            playerBullets = []; 
+            enemyBullets = []; 
+            powerUps = [];
+            enemies = Array.from({ length: level + 4 }, () => new Enemy(2 + level));
+            levelDisplay.textContent = `关卡: ${level}`; 
+            levelDisplay.style.display = 'block'; 
+        }
+
+        function clearCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function gameLoop() {
+            if (isPaused) return;
+
+            clearCanvas();
+
+            player.move();
+            player.draw();
+            player.updatePowerUp();
+
+            playerBullets.forEach((bullet, bulletIndex) => {
+                bullet.move();
+                bullet.draw();
+
+                if (bullet.isOffScreen()) {
+                    playerBullets.splice(bulletIndex, 1);
+                }
+
+                enemies.forEach((enemy, enemyIndex) => {
+                    if (bullet.hits(enemy)) {
+                        enemies.splice(enemyIndex, 1);
+                        playerBullets.splice(bulletIndex, 1);
+                    }
+                });
+            });
+
+            enemyBullets.forEach((bullet, bulletIndex) => {
+                bullet.move();
+                bullet.draw();
+
+                if (bullet.isOffScreen()) {
+                    enemyBullets.splice(bulletIndex, 1);
+                }
+
+                if (bullet.hits(player)) {
+                    isPaused = true;
+                    gameOverModal.style.display = 'flex';
+                }
+            });
+
+            enemies.forEach(enemy => {
+                enemy.move();
+                enemy.draw();
+
+                if (Math.random() < 0.01) { 
+                    enemyBullets.push(enemy.shoot());
+                }
+
+                if (player.hits(enemy)) {
+                    isPaused = true;
+                    gameOverModal.style.display = 'flex';
+                }
+            });
+
+            powerUps.forEach((powerUp, powerUpIndex) => {
+                powerUp.move();
+                powerUp.draw();
+
+                if (powerUp.isOffScreen()) {
+                    powerUps.splice(powerUpIndex, 1);
+                }
+
+                if (powerUp.hits(player)) {
+                    if (powerUp.type === 'triple') {
+                        player.bulletCount = 3;
+                    } else if (powerUp.type === 'speed') {
+                        player.bulletSpeed *= 2;
+                    }
+                    player.powerUpDuration = 600; 
+                    powerUps.splice(powerUpIndex, 1); 
+                }
+            });
+
+            if (Math.random() < 0.005) { 
+                const type = Math.random() < 0.5 ? 'triple' : 'speed';
+                powerUps.push(new PowerUp(type));
+            }
+
+            if (enemies.length === 0) {
+                isPaused = true;
+                if (level === totalLevels) {
+                    completionModal.style.display = 'flex';
+                } else {
+                    levelMessage.textContent = `第 ${level} 关完成！`;
+                    levelModal.style.display = 'flex';
+                }
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        startButton.addEventListener('click', () => {
+            startModal.style.display = 'none';
+            levelSelectModal.style.display = 'flex';
+        });
+
+        for (let i = 1; i <= totalLevels; i++) {
+            const button = document.createElement('button');
+            button.textContent = `关卡 ${i}`;
+            button.addEventListener('click', () => {
+                level = i;
+                levelSelectModal.style.display = 'none';
+                startLevel(); 
+                isPaused = false;
+                gameLoop();
+            });
+            levelButtons.appendChild(button);
+        }
+
+        nextLevelButton.addEventListener('click', () => {
+            level++;
+            levelModal.style.display = 'none';
+            startLevel();
+            isPaused = false;
+            gameLoop();
+        });
+
+        retryLevelButton.addEventListener('click', () => {
+            levelModal.style.display = 'none';
+            startLevel();
+            isPaused = false;
+            gameLoop();
+        });
+
+        restartButton.addEventListener('click', () => {
+            gameOverModal.style.display = 'none';
+            startLevel();
+            isPaused = false;
+            gameLoop();
+        });
+
+        homeButton.addEventListener('click', () => {
+            gameOverModal.style.display = 'none';
+            clearCanvas(); 
+            startModal.style.display = 'flex';
+            levelDisplay.style.display = 'none'; 
+        });
+
+        completionHomeButton.addEventListener('click', () => {
+            completionModal.style.display = 'none';
+            clearCanvas(); 
+            startModal.style.display = 'flex';
+            levelDisplay.style.display = 'none'; 
+        });
+
+        resumeButton.addEventListener('click', () => {
+            pauseModal.style.display = 'none';
+            isPaused = false;
+            gameLoop();
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft') player.xChange = -5 * scaleFactor;
+            if (e.key === 'ArrowRight') player.xChange = 5 * scaleFactor;
+            if (e.key === 'ArrowUp') player.yChange = -5 * scaleFactor;
+            if (e.key === 'ArrowDown') player.yChange = 5 * scaleFactor;
+            if (e.key === ' ') {
+                playerBullets.push(...player.shoot());
+            }
+            if (e.key === 'p') {
+                isPaused = !isPaused;
+                if (isPaused) {
+                    pauseModal.style.display = 'flex';
+                } else {
+                    pauseModal.style.display = 'none';
+                    gameLoop();
+                }
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') player.xChange = 0;
+            if (e.key === 'ArrowUp' || e.key === 'ArrowDown') player.yChange = 0;
+        });
+
+        canvas.addEventListener('touchstart', handleTouchStart, false);
+        canvas.addEventListener('touchmove', handleTouchMove, false);
+        canvas.addEventListener('touchend', handleTouchEnd, false);
+
+        let touchStartX = 0;
+        let touchStartY = 0;
+
+        function handleTouchStart(e) {
+            const touch = e.touches[0];
+            touchStartX = touch.clientX;
+            touchStartY = touch.clientY;
+        }
+
+        function handleTouchMove(e) {
+            const touch = e.touches[0];
+            const touchX = touch.clientX;
+            const touchY = touch.clientY;
+
+            const deltaX = touchX - touchStartX;
+            const deltaY = touchY - touchStartY;
+
+            player.xChange = deltaX * 0.1 * scaleFactor; 
+            player.yChange = deltaY * 0.1 * scaleFactor;
+
+            touchStartX = touchX;
+            touchStartY = touchY;
+        }
+
+        function handleTouchEnd() {
+            player.xChange = 0;
+            player.yChange = 0;
+        }
+
+        startModal.style.display = 'flex';
+    </script>
+</body>
+</html>
