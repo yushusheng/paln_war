@@ -371,6 +371,11 @@
             player.draw();
             player.updatePowerUp();
 
+            // 自动射击
+            if (Math.random() < 0.05) { // 每20帧大约射击一次
+                playerBullets.push(...player.shoot());
+            }
+
             playerBullets.forEach((bullet, bulletIndex) => {
                 bullet.move();
                 bullet.draw();
@@ -554,19 +559,27 @@
             const touchX = touch.clientX;
             const touchY = touch.clientY;
 
+            // 计算移动的距离
             const deltaX = touchX - touchStartX;
             const deltaY = touchY - touchStartY;
 
-            player.xChange = deltaX * 0.1 * scaleFactor; 
-            player.yChange = deltaY * 0.1 * scaleFactor;
+            // 更新飞机的位置
+            player.x += deltaX * 0.1 * scaleFactor;
+            player.y += deltaY * 0.1 * scaleFactor;
 
+            // 限制飞机在画布内移动
+            if (player.x < 0) player.x = 0;
+            if (player.x > canvas.width - player.width) player.x = canvas.width - player.width;
+            if (player.y < 100 * scaleFactor) player.y = 100 * scaleFactor;
+            if (player.y > canvas.height - player.height) player.y = canvas.height - player.height;
+
+            // 更新触摸起始位置
             touchStartX = touchX;
             touchStartY = touchY;
         }
 
         function handleTouchEnd() {
-            player.xChange = 0;
-            player.yChange = 0;
+            // 触摸结束时不需要做任何操作
         }
 
         startModal.style.display = 'flex';
